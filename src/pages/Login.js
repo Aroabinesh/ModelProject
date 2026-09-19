@@ -11,6 +11,7 @@ import {
   IconButton,
   Alert,
   Avatar,
+  CircularProgress,
 } from '@mui/material';
 import PersonIcon from '@mui/icons-material/Person';
 import LockIcon from '@mui/icons-material/Lock';
@@ -18,9 +19,7 @@ import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import LoginIllustration from '../assets/LoginIllustration';
-
-const VALID_USERNAME = 'admin';
-const VALID_PASSWORD = 'admin123';
+import { login } from '../api/authApi';
 
 function Login() {
   const navigate = useNavigate();
@@ -28,8 +27,9 @@ function Login() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!username.trim() || !password.trim()) {
@@ -37,13 +37,18 @@ function Login() {
       return;
     }
 
-    if (username === VALID_USERNAME && password === VALID_PASSWORD) {
+    setSubmitting(true);
+    setError('');
+    try {
+      const result = await login(username.trim(), password);
       localStorage.setItem('isAuthenticated', 'true');
-      localStorage.setItem('username', username);
-      setError('');
+      localStorage.setItem('authToken', result.token);
+      localStorage.setItem('username', result.username);
       navigate('/dashboard');
-    } else {
-      setError('Invalid username or password.');
+    } catch (err) {
+      setError(err.status === 401 ? 'Invalid username or password.' : err.message || 'Failed to sign in.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -177,13 +182,14 @@ function Login() {
                 fullWidth
                 size="large"
                 variant="contained"
+                disabled={submitting}
                 sx={{
                   mt: 3,
                   py: 1.3,
                   background: 'linear-gradient(90deg, #1a237e, #00acc1)',
                 }}
               >
-                Login
+                {submitting ? <CircularProgress size={24} sx={{ color: '#fff' }} /> : 'Login'}
               </Button>
 
               <Typography

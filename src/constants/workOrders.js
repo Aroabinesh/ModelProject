@@ -1,7 +1,10 @@
+// Status values match the WorkOrderStatus enum served by the API exactly
+// (see /swagger/v1/swagger.json) - these are sent on the wire as-is.
+// STATUS_LABELS supplies the human-friendly text shown in the UI.
 export const STATUS = {
   NEW: 'New',
   ASSIGNED: 'Assigned',
-  IN_PROGRESS: 'In Progress',
+  IN_PROGRESS: 'InProgress',
   COMPLETED: 'Completed',
 };
 
@@ -11,6 +14,13 @@ export const STATUS_OPTIONS = [
   STATUS.IN_PROGRESS,
   STATUS.COMPLETED,
 ];
+
+export const STATUS_LABELS = {
+  [STATUS.NEW]: 'New',
+  [STATUS.ASSIGNED]: 'Assigned',
+  [STATUS.IN_PROGRESS]: 'In Progress',
+  [STATUS.COMPLETED]: 'Completed',
+};
 
 export const PRIORITY = {
   LOW: 'Low',

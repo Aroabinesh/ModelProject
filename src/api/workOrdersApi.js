@@ -1,157 +1,52 @@
-// In-memory mock API for the Work Order Management module.
-//
-// This module stands in for the future ASP.NET Core backend. Every function
-// returns a Promise shaped the way a real fetch() call would (resolve with
-// data, reject with an Error), and internally simulates latency, so the
-// screens in src/pages/WorkOrders can be swapped over to real HTTP calls
-// later without changing their call sites.
+// Live client for the Work Order Management API (see {BASE_URL}/swagger/index.html).
+// Adapts the API's flat DTOs into the nested shape (facility/asset/technician
+// objects) the WorkOrders screens are written against, so page components
+// don't need to know about the wire format.
 
-import {
-  assets,
-  customers,
-  facilities,
-  initialWorkOrderHistory,
-  initialWorkOrders,
-  technicians,
-} from '../data/mockData';
-import { getAllowedNextStatuses, isTransitionAllowed, STATUS } from '../constants/workOrders';
-import { validateAssignment, validateWorkOrderDetails } from '../utils/workOrderValidation';
+import { request, getCurrentUser } from './httpClient';
+import { getAllowedNextStatuses, STATUS } from '../constants/workOrders';
+import { validateWorkOrderDetails } from '../utils/workOrderValidation';
 
-const LATENCY_MS = 350;
-
-let workOrders = initialWorkOrders.map((wo) => ({ ...wo }));
-let workOrderHistory = initialWorkOrderHistory.map((h) => ({ ...h }));
-let nextIdCounter = workOrders.length + 1000;
-
-function delay(fn) {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      try {
-        resolve(fn());
-      } catch (err) {
-        reject(err);
-      }
-    }, LATENCY_MS);
-  });
-}
-
-function findAsset(assetId) {
-  return assets.find((a) => a.id === assetId) || null;
-}
-
-function findFacility(facilityId) {
-  return facilities.find((f) => f.id === facilityId) || null;
-}
-
-function findCustomer(customerId) {
-  return customers.find((c) => c.id === customerId) || null;
-}
-
-function findTechnician(technicianId) {
-  return technicians.find((t) => t.id === technicianId) || null;
-}
-
-function attachRelations(wo) {
-  const asset = findAsset(wo.assetId);
-  const facility = asset ? findFacility(asset.facilityId) : null;
-  const customer = facility ? findCustomer(facility.customerId) : null;
-  const technician = wo.assignedTechnicianId ? findTechnician(wo.assignedTechnicianId) : null;
-
+function toListItem(dto) {
   return {
-    ...wo,
-    asset,
-    facility,
-    customer,
-    technician,
+    id: dto.id,
+    title: dto.title,
+    priority: dto.priority,
+    status: dto.status,
+    assetId: dto.assetId,
+    facility: { id: dto.facilityId, name: dto.facilityName },
+    asset: { id: dto.assetId, assetCode: dto.assetCode },
+    technician: dto.assignedTechnicianId
+      ? { id: dto.assignedTechnicianId, name: dto.assignedTechnicianName }
+      : null,
+    assignedTechnicianId: dto.assignedTechnicianId,
+    createdAt: dto.createdAt,
+    updatedAt: dto.updatedAt,
   };
 }
 
-function compareValues(a, b) {
-  if (a === b) return 0;
-  return a > b ? 1 : -1;
-}
-
-function sortWorkOrders(items, sortBy, sortDir) {
-  const dir = sortDir === 'desc' ? -1 : 1;
-  const sorted = [...items].sort((a, b) => {
-    switch (sortBy) {
-      case 'title':
-        return compareValues(a.title.toLowerCase(), b.title.toLowerCase()) * dir;
-      case 'priority':
-        return compareValues(a.priority, b.priority) * dir;
-      case 'status':
-        return compareValues(a.status, b.status) * dir;
-      case 'facility':
-        return compareValues(a.facility?.name || '', b.facility?.name || '') * dir;
-      case 'technician':
-        return compareValues(a.technician?.name || '', b.technician?.name || '') * dir;
-      case 'createdAt':
-      default:
-        return compareValues(new Date(a.createdAt).getTime(), new Date(b.createdAt).getTime()) * dir;
-    }
-  });
-  return sorted;
-}
-
-export function listWorkOrders({
-  search = '',
-  status = '',
-  priority = '',
-  facilityId = '',
-  sortBy = 'createdAt',
-  sortDir = 'desc',
-  page = 0,
-  pageSize = 10,
-} = {}) {
-  return delay(() => {
-    let items = workOrders.map(attachRelations);
-
-    const term = search.trim().toLowerCase();
-    if (term) {
-      items = items.filter(
-        (wo) =>
-          wo.title.toLowerCase().includes(term) ||
-          wo.id.toLowerCase().includes(term) ||
-          wo.asset?.name?.toLowerCase().includes(term)
-      );
-    }
-
-    if (status) {
-      items = items.filter((wo) => wo.status === status);
-    }
-
-    if (priority) {
-      items = items.filter((wo) => wo.priority === priority);
-    }
-
-    if (facilityId) {
-      items = items.filter((wo) => wo.facility?.id === facilityId);
-    }
-
-    items = sortWorkOrders(items, sortBy, sortDir);
-
-    const total = items.length;
-    const start = page * pageSize;
-    const pageItems = items.slice(start, start + pageSize);
-
-    return { items: pageItems, total };
-  });
-}
-
-export function getWorkOrder(id) {
-  return delay(() => {
-    const wo = workOrders.find((w) => w.id === id);
-    if (!wo) throw new Error('Work order not found.');
-    return attachRelations(wo);
-  });
-}
-
-export function getWorkOrderHistory(id) {
-  return delay(() => {
-    return workOrderHistory
-      .filter((h) => h.workOrderId === id)
-      .sort((a, b) => new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime());
-  });
+function toDetail(dto) {
+  return {
+    id: dto.id,
+    title: dto.title,
+    description: dto.description,
+    priority: dto.priority,
+    status: dto.status,
+    assetId: dto.assetId,
+    facilityId: dto.facilityId,
+    facility: { id: dto.facilityId, name: dto.facilityName },
+    asset: { id: dto.assetId, name: dto.assetName, assetCode: dto.assetCode },
+    customer: { name: dto.customerName },
+    assignedTechnicianId: dto.assignedTechnicianId,
+    technician: dto.assignedTechnicianId
+      ? { id: dto.assignedTechnicianId, name: dto.assignedTechnicianName }
+      : null,
+    scheduledStartDate: dto.scheduledStartDate,
+    scheduledEndDate: dto.scheduledEndDate,
+    createdAt: dto.createdAt,
+    updatedAt: dto.updatedAt,
+    rowVersion: dto.rowVersion,
+  };
 }
 
 function validateWorkOrderPayload(payload) {
@@ -163,204 +58,174 @@ function validateWorkOrderPayload(payload) {
   }
 }
 
-export function createWorkOrder(payload) {
-  return delay(() => {
-    validateWorkOrderPayload(payload);
-
-    const now = new Date().toISOString();
-    const id = `wo-${nextIdCounter}`;
-    nextIdCounter += 1;
-
-    const newWorkOrder = {
-      id,
-      assetId: payload.assetId,
-      title: payload.title.trim(),
-      description: payload.description.trim(),
-      priority: payload.priority,
-      status: STATUS.NEW,
-      assignedTechnicianId: null,
-      createdAt: now,
-      updatedAt: now,
-      rowVersion: 1,
-    };
-
-    workOrders = [newWorkOrder, ...workOrders];
-    return attachRelations(newWorkOrder);
-  });
-}
-
-export function updateWorkOrder(id, payload) {
-  return delay(() => {
-    validateWorkOrderPayload(payload);
-
-    const index = workOrders.findIndex((w) => w.id === id);
-    if (index === -1) throw new Error('Work order not found.');
-
-    const existing = workOrders[index];
-    const updated = {
-      ...existing,
-      assetId: payload.assetId,
-      title: payload.title.trim(),
-      description: payload.description.trim(),
-      priority: payload.priority,
-      updatedAt: new Date().toISOString(),
-      rowVersion: existing.rowVersion + 1,
-    };
-
-    workOrders = [...workOrders.slice(0, index), updated, ...workOrders.slice(index + 1)];
-    return attachRelations(updated);
-  });
-}
-
-export function deleteWorkOrder(id) {
-  return delay(() => {
-    const exists = workOrders.some((w) => w.id === id);
-    if (!exists) throw new Error('Work order not found.');
-    workOrders = workOrders.filter((w) => w.id !== id);
-    workOrderHistory = workOrderHistory.filter((h) => h.workOrderId !== id);
-  });
-}
-
-export function assignTechnician(id, technicianId, schedule = {}) {
-  return delay(() => {
-    const { startDate, endDate } = schedule;
-    const errors = validateAssignment({ technicianId, startDate, endDate });
-    if (Object.keys(errors).length > 0) {
-      const err = new Error('Validation failed.');
-      err.fieldErrors = errors;
-      throw err;
-    }
-
-    const index = workOrders.findIndex((w) => w.id === id);
-    if (index === -1) throw new Error('Work order not found.');
-
-    const existing = workOrders[index];
-    const withAssignment = {
-      ...existing,
-      assignedTechnicianId: technicianId,
-      scheduledStart: new Date(startDate).toISOString(),
-      scheduledEnd: new Date(endDate).toISOString(),
-      updatedAt: new Date().toISOString(),
-      rowVersion: existing.rowVersion + 1,
-    };
-    workOrders = [...workOrders.slice(0, index), withAssignment, ...workOrders.slice(index + 1)];
-
-    // Assigning a technician is what moves a brand-new work order into the
-    // "Assigned" step of the workflow; re-assigning later doesn't re-trigger it.
-    const updated =
-      withAssignment.status === STATUS.NEW
-        ? advanceStatus(index, STATUS.ASSIGNED, { comments: 'Technician assigned and work scheduled.' })
-        : withAssignment;
-
-    return attachRelations(updated);
-  });
-}
-
-// Moves a work order exactly one step forward and records the transition in
-// history. Shared by changeStatus (single, user-picked hop) and
-// completeWorkOrder (an automatic multi-hop fast-forward to Completed).
-function advanceStatus(index, newStatus, { comments = '', changedBy = 'Current User' } = {}) {
-  const existing = workOrders[index];
-
-  const updated = {
-    ...existing,
-    status: newStatus,
-    updatedAt: new Date().toISOString(),
-    rowVersion: existing.rowVersion + 1,
-  };
-
-  workOrders = [...workOrders.slice(0, index), updated, ...workOrders.slice(index + 1)];
-
-  workOrderHistory = [
-    ...workOrderHistory,
-    {
-      id: `${existing.id}-hist-${workOrderHistory.length + 1}`,
-      workOrderId: existing.id,
-      oldStatus: existing.status,
-      newStatus,
-      changedBy,
-      changedAt: updated.updatedAt,
-      comments: comments.trim(),
+export async function listWorkOrders({
+  search = '',
+  status = '',
+  priority = '',
+  facilityId = '',
+  technicianId = '',
+  sortBy = 'createdAt',
+  sortDir = 'desc',
+  page = 0,
+  pageSize = 10,
+} = {}) {
+  const result = await request('/api/workorders', {
+    query: {
+      Search: search,
+      Status: status,
+      Priority: priority,
+      FacilityId: facilityId,
+      TechnicianId: technicianId,
+      SortBy: sortBy,
+      SortDescending: sortDir === 'desc',
+      Page: page + 1,
+      PageSize: pageSize,
     },
-  ];
+  });
 
-  return updated;
+  return {
+    items: (result.items || []).map(toListItem),
+    total: result.totalCount,
+  };
 }
 
-export function changeStatus(id, newStatus, { comments = '', changedBy = 'Current User' } = {}) {
-  return delay(() => {
-    const index = workOrders.findIndex((w) => w.id === id);
-    if (index === -1) throw new Error('Work order not found.');
+export async function getWorkOrder(id) {
+  const dto = await request(`/api/workorders/${id}`);
+  return toDetail(dto);
+}
 
-    const existing = workOrders[index];
+export async function getWorkOrderHistory(id) {
+  const items = await request(`/api/workorders/${id}/history`);
+  return (items || []).sort((a, b) => new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime());
+}
 
-    if (!isTransitionAllowed(existing.status, newStatus)) {
-      throw new Error(`Cannot change status from "${existing.status}" to "${newStatus}".`);
-    }
+export async function createWorkOrder(payload) {
+  validateWorkOrderPayload(payload);
 
-    if (newStatus === STATUS.ASSIGNED && !existing.assignedTechnicianId) {
-      throw new Error('Assign a technician before moving this work order to "Assigned".');
-    }
-
-    const updated = advanceStatus(index, newStatus, { comments, changedBy });
-    return attachRelations(updated);
+  const dto = await request('/api/workorders', {
+    method: 'POST',
+    body: {
+      assetId: Number(payload.assetId),
+      title: payload.title.trim(),
+      description: payload.description.trim(),
+      priority: payload.priority,
+      assignedTechnicianId: null,
+      createdBy: getCurrentUser(),
+    },
   });
+
+  return toDetail(dto);
+}
+
+// workOrder is the full detail object (from getWorkOrder/createWorkOrder/etc.) -
+// its rowVersion is required by the API as an optimistic-concurrency token.
+export async function updateWorkOrder(workOrder, payload) {
+  validateWorkOrderPayload(payload);
+
+  const dto = await request(`/api/workorders/${workOrder.id}`, {
+    method: 'PUT',
+    body: {
+      title: payload.title.trim(),
+      description: payload.description.trim(),
+      priority: payload.priority,
+      rowVersion: workOrder.rowVersion,
+    },
+  });
+
+  return toDetail(dto);
+}
+
+export async function deleteWorkOrder(id) {
+  await request(`/api/workorders/${id}`, { method: 'DELETE' });
+}
+
+// startDate/endDate are plain 'YYYY-MM-DD' strings from a date input, or empty/null to clear
+// the schedule.
+export async function assignTechnician(workOrder, technicianId, { startDate, endDate } = {}) {
+  const dto = await request(`/api/workorders/${workOrder.id}/assign`, {
+    method: 'PUT',
+    body: {
+      technicianId: Number(technicianId),
+      scheduledStartDate: startDate || null,
+      scheduledEndDate: endDate || null,
+      changedBy: getCurrentUser(),
+      rowVersion: workOrder.rowVersion,
+    },
+  });
+
+  return toDetail(dto);
+}
+
+export async function changeStatus(workOrder, newStatus, { comments = '' } = {}) {
+  const dto = await request(`/api/workorders/${workOrder.id}/status`, {
+    method: 'PUT',
+    body: {
+      newStatus,
+      changedBy: getCurrentUser(),
+      comments,
+      rowVersion: workOrder.rowVersion,
+    },
+  });
+
+  return toDetail(dto);
 }
 
 // Guided fast-forward used by the "Complete Work Order" wizard step: advances
 // a work order through every remaining allowed transition until it reaches
-// Completed, writing one history record per hop for a full audit trail.
-export function completeWorkOrder(id, { comments = '', changedBy = 'Current User' } = {}) {
-  return delay(() => {
-    let index = workOrders.findIndex((w) => w.id === id);
-    if (index === -1) throw new Error('Work order not found.');
+// Completed, one status-change call per hop (the API only allows one hop at
+// a time), threading the returned rowVersion through each call.
+export async function completeWorkOrder(workOrder, { comments = '' } = {}) {
+  if (workOrder.status === STATUS.COMPLETED) {
+    throw new Error('This work order is already completed.');
+  }
+  if (!workOrder.assignedTechnicianId) {
+    throw new Error('Assign a technician before completing this work order.');
+  }
 
-    if (workOrders[index].status === STATUS.COMPLETED) {
-      throw new Error('This work order is already completed.');
-    }
-    if (!workOrders[index].assignedTechnicianId) {
-      throw new Error('Assign a technician before completing this work order.');
-    }
+  let current = workOrder;
+  while (current.status !== STATUS.COMPLETED) {
+    const [nextStatus] = getAllowedNextStatuses(current.status);
+    if (!nextStatus) throw new Error(`Cannot complete a work order from status "${current.status}".`);
 
-    let updated = workOrders[index];
-    while (updated.status !== STATUS.COMPLETED) {
-      const [nextStatus] = getAllowedNextStatuses(updated.status);
+    const isFinalHop = nextStatus === STATUS.COMPLETED;
+    current = await changeStatus(current, nextStatus, { comments: isFinalHop ? comments : '' });
+  }
 
-      if (!nextStatus) throw new Error(`Cannot complete a work order from status "${updated.status}".`);
-
-      const isFinalHop = nextStatus === STATUS.COMPLETED;
-      updated = advanceStatus(index, nextStatus, {
-        comments: isFinalHop ? comments : '',
-        changedBy,
-      });
-      index = workOrders.findIndex((w) => w.id === id);
-    }
-
-    return attachRelations(updated);
-  });
+  return current;
 }
 
-export function listFacilities() {
-  return delay(() => facilities.map((f) => ({ ...f, customer: findCustomer(f.customerId) })));
+export async function listFacilities() {
+  const items = await request('/api/facilities');
+  return (items || []).map((f) => ({
+    id: f.id,
+    name: f.name,
+    location: f.location,
+    customer: { id: f.customerId, name: f.customerName },
+  }));
 }
 
-export function listAssetsByFacility(facilityId) {
-  return delay(() => assets.filter((a) => a.facilityId === facilityId));
+export async function listAssetsByFacility(facilityId) {
+  const items = await request('/api/assets', { query: { facilityId } });
+  return items || [];
 }
 
-export function listTechnicians() {
-  return delay(() => technicians.map((t) => ({ ...t })));
+export async function listTechnicians() {
+  const items = await request('/api/technicians', { query: { activeOnly: true } });
+  return items || [];
 }
 
-export function getWorkOrderStats() {
-  return delay(() => {
-    const total = workOrders.length;
-    const pending = workOrders.filter((w) => w.status !== STATUS.COMPLETED).length;
-    const completed = workOrders.filter((w) => w.status === STATUS.COMPLETED).length;
-    const activeTechnicians = new Set(
-      workOrders.filter((w) => w.assignedTechnicianId).map((w) => w.assignedTechnicianId)
-    ).size;
+// There's no dedicated stats endpoint, so this pulls a large page of work
+// orders and aggregates client-side.
+export async function getWorkOrderStats() {
+  const result = await request('/api/workorders', { query: { Page: 1, PageSize: 1000 } });
+  const items = result.items || [];
 
-    return { total, pending, completed, activeTechnicians };
-  });
+  const total = result.totalCount;
+  const pending = items.filter((w) => w.status !== STATUS.COMPLETED).length;
+  const completed = items.filter((w) => w.status === STATUS.COMPLETED).length;
+  const activeTechnicians = new Set(
+    items.filter((w) => w.assignedTechnicianId).map((w) => w.assignedTechnicianId)
+  ).size;
+
+  return { total, pending, completed, activeTechnicians };
 }

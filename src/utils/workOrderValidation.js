@@ -18,11 +18,9 @@ export function validateAssignment(form) {
   const errors = {};
 
   if (!form.technicianId) errors.technicianId = 'Please select a technician.';
-  if (!form.startDate) errors.startDate = 'Start date is required.';
-  if (!form.endDate) errors.endDate = 'End date is required.';
 
-  if (form.startDate && form.endDate && new Date(form.endDate) <= new Date(form.startDate)) {
-    errors.endDate = 'End date must be after the start date.';
+  if (form.startDate && form.endDate && form.endDate < form.startDate) {
+    errors.endDate = 'End date cannot be before the start date.';
   }
 
   return errors;

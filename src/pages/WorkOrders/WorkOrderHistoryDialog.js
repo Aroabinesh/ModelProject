@@ -13,7 +13,7 @@ import {
   Alert,
 } from '@mui/material';
 import ArrowRightAltIcon from '@mui/icons-material/ArrowRightAlt';
-import { STATUS_COLORS } from '../../constants/workOrders';
+import { STATUS_COLORS, STATUS_LABELS } from '../../constants/workOrders';
 import { getWorkOrderHistory } from '../../api/workOrdersApi';
 
 function WorkOrderHistoryDialog({ open, workOrder, onClose }) {
@@ -59,9 +59,9 @@ function WorkOrderHistoryDialog({ open, workOrder, onClose }) {
               <Box key={h.id}>
                 <Box sx={{ py: 1.5 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                    <Chip size="small" label={h.oldStatus} color={STATUS_COLORS[h.oldStatus]} />
+                    <Chip size="small" label={STATUS_LABELS[h.oldStatus] || h.oldStatus} color={STATUS_COLORS[h.oldStatus]} />
                     <ArrowRightAltIcon fontSize="small" color="action" />
-                    <Chip size="small" label={h.newStatus} color={STATUS_COLORS[h.newStatus]} />
+                    <Chip size="small" label={STATUS_LABELS[h.newStatus] || h.newStatus} color={STATUS_COLORS[h.newStatus]} />
                   </Box>
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                     {new Date(h.changedAt).toLocaleString()} &middot; Changed by {h.changedBy}

@@ -46,6 +46,7 @@ function AppLayout() {
 
   const handleLogout = () => {
     localStorage.removeItem('isAuthenticated');
+    localStorage.removeItem('authToken');
     localStorage.removeItem('username');
     navigate('/login');
   };

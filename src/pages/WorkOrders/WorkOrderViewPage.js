@@ -16,7 +16,7 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import EditIcon from '@mui/icons-material/Edit';
 import ArrowRightAltIcon from '@mui/icons-material/ArrowRightAlt';
-import { PRIORITY_COLORS, STATUS_COLORS } from '../../constants/workOrders';
+import { PRIORITY_COLORS, STATUS_COLORS, STATUS_LABELS } from '../../constants/workOrders';
 import { getWorkOrder, getWorkOrderHistory } from '../../api/workOrdersApi';
 
 const STEPS = [
@@ -161,16 +161,6 @@ function WorkOrderViewPage() {
                     <Grid size={{ xs: 12, md: 4 }}>
                       <ReadOnlyField label="Technician">{workOrder.technician?.name}</ReadOnlyField>
                     </Grid>
-                    <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-                      <ReadOnlyField label="Start Date & Time">
-                        {workOrder.scheduledStart ? new Date(workOrder.scheduledStart).toLocaleString() : ''}
-                      </ReadOnlyField>
-                    </Grid>
-                    <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-                      <ReadOnlyField label="End Date & Time">
-                        {workOrder.scheduledEnd ? new Date(workOrder.scheduledEnd).toLocaleString() : ''}
-                      </ReadOnlyField>
-                    </Grid>
                   </Grid>
                 )}
               </Box>
@@ -180,27 +170,20 @@ function WorkOrderViewPage() {
               <Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
                   <Typography variant="body2">Current status:</Typography>
-                  <Chip size="small" label={workOrder.status} color={STATUS_COLORS[workOrder.status]} />
+                  <Chip size="small" label={STATUS_LABELS[workOrder.status] || workOrder.status} color={STATUS_COLORS[workOrder.status]} />
                 </Box>
 
                 <Grid container spacing={3} sx={{ mb: 2 }}>
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Grid size={{ xs: 12, sm: 6, md: 4 }}>
                     <ReadOnlyField label="Title">{workOrder.title}</ReadOnlyField>
                   </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Grid size={{ xs: 12, sm: 6, md: 4 }}>
                     <ReadOnlyField label="Facility / Asset">
                       {workOrder.facility?.name} &middot; {workOrder.asset?.name}
                     </ReadOnlyField>
                   </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Grid size={{ xs: 12, sm: 6, md: 4 }}>
                     <ReadOnlyField label="Assigned Technician">{workOrder.technician?.name || 'Unassigned'}</ReadOnlyField>
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                    <ReadOnlyField label="Scheduled Window">
-                      {workOrder.scheduledStart ? new Date(workOrder.scheduledStart).toLocaleString() : '—'}
-                      {' — '}
-                      {workOrder.scheduledEnd ? new Date(workOrder.scheduledEnd).toLocaleString() : '—'}
-                    </ReadOnlyField>
                   </Grid>
                 </Grid>
 
@@ -234,9 +217,9 @@ function WorkOrderViewPage() {
                       <Box key={h.id}>
                         <Box sx={{ py: 1.5 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                            <Chip size="small" label={h.oldStatus} color={STATUS_COLORS[h.oldStatus]} />
+                            <Chip size="small" label={STATUS_LABELS[h.oldStatus] || h.oldStatus} color={STATUS_COLORS[h.oldStatus]} />
                             <ArrowRightAltIcon fontSize="small" color="action" />
-                            <Chip size="small" label={h.newStatus} color={STATUS_COLORS[h.newStatus]} />
+                            <Chip size="small" label={STATUS_LABELS[h.newStatus] || h.newStatus} color={STATUS_COLORS[h.newStatus]} />
                           </Box>
                           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                             {new Date(h.changedAt).toLocaleString()} &middot; Changed by {h.changedBy}

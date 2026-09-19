@@ -23,6 +23,7 @@ import {
   PRIORITY_OPTIONS,
   STATUS,
   STATUS_COLORS,
+  STATUS_LABELS,
 } from '../../constants/workOrders';
 import {
   createWorkOrder,
@@ -40,16 +41,18 @@ import { validateAssignment, validateWorkOrderDetails } from '../../utils/workOr
 const EMPTY_DETAILS = { facilityId: '', assetId: '', title: '', description: '', priority: '' };
 const EMPTY_ASSIGNMENT = { technicianId: '', startDate: '', endDate: '' };
 
+// Dates come back from the API as ISO datetime strings (e.g. "2026-09-19T00:00:00");
+// <input type="date"> needs the plain "YYYY-MM-DD" portion.
+function toDateInputValue(isoString) {
+  return isoString ? isoString.slice(0, 10) : '';
+}
+
 const STEPS = [
   { label: '1. Work Order Details' },
   { label: '2. Assign Technician' },
   { label: '3. Complete Work Order' },
   { label: 'History' },
 ];
-
-function toLocalInputValue(isoString) {
-  return isoString ? isoString.slice(0, 16) : '';
-}
 
 function WorkOrderWizard() {
   const { id } = useParams();
@@ -106,8 +109,8 @@ function WorkOrderWizard() {
         });
         setAssignForm({
           technicianId: wo.assignedTechnicianId || '',
-          startDate: toLocalInputValue(wo.scheduledStart),
-          endDate: toLocalInputValue(wo.scheduledEnd),
+          startDate: toDateInputValue(wo.scheduledStartDate),
+          endDate: toDateInputValue(wo.scheduledEndDate),
         });
       })
       .catch((err) => setLoadError(err.message || 'Failed to load work order.'))
@@ -159,7 +162,7 @@ function WorkOrderWizard() {
     setDetailsError('');
     try {
       if (workOrder) {
-        const updated = await updateWorkOrder(workOrder.id, detailsForm);
+        const updated = await updateWorkOrder(workOrder, detailsForm);
         setWorkOrder(updated);
         setSnackbar({ open: true, message: 'Work order details updated.' });
       } else {
@@ -184,13 +187,13 @@ function WorkOrderWizard() {
   const assignFieldHelper = (field) => (assignTouched[field] && assignErrors[field]) || ' ';
 
   const handleSaveAssignment = async () => {
-    setAssignTouched({ technicianId: true, startDate: true, endDate: true });
+    setAssignTouched({ technicianId: true });
     if (Object.keys(assignErrors).length > 0) return;
 
     setAssignSubmitting(true);
     setAssignError('');
     try {
-      const updated = await assignTechnician(workOrder.id, assignForm.technicianId, {
+      const updated = await assignTechnician(workOrder, assignForm.technicianId, {
         startDate: assignForm.startDate,
         endDate: assignForm.endDate,
       });
@@ -208,7 +211,7 @@ function WorkOrderWizard() {
     setCompleteSubmitting(true);
     setCompleteError('');
     try {
-      const updated = await completeWorkOrder(workOrder.id, { comments: completeComments });
+      const updated = await completeWorkOrder(workOrder, { comments: completeComments });
       setWorkOrder(updated);
       setSnackbar({ open: true, message: 'Work order completed successfully.' });
     } catch (err) {
@@ -297,7 +300,8 @@ function WorkOrderWizard() {
                     onChange={handleDetailsChange('facilityId')}
                     onBlur={handleDetailsBlur('facilityId')}
                     error={detailsFieldError('facilityId')}
-                    helperText={detailsFieldHelper('facilityId')}
+                    helperText={isEditMode ? 'Facility cannot be changed after creation.' : detailsFieldHelper('facilityId')}
+                    disabled={isEditMode}
                   >
                     {facilities.map((f) => (
                       <MenuItem key={f.id} value={f.id}>
@@ -317,8 +321,14 @@ function WorkOrderWizard() {
                     onChange={handleDetailsChange('assetId')}
                     onBlur={handleDetailsBlur('assetId')}
                     error={detailsFieldError('assetId')}
-                    helperText={!detailsForm.facilityId ? 'Select a facility first.' : detailsFieldHelper('assetId')}
-                    disabled={!detailsForm.facilityId}
+                    helperText={
+                      isEditMode
+                        ? 'Asset cannot be changed after creation.'
+                        : !detailsForm.facilityId
+                        ? 'Select a facility first.'
+                        : detailsFieldHelper('assetId')
+                    }
+                    disabled={isEditMode || !detailsForm.facilityId}
                   >
                     {assets.map((a) => (
                       <MenuItem key={a.id} value={a.id}>
@@ -413,7 +423,7 @@ function WorkOrderWizard() {
 
               {step2Done && !assignSubmitting && (
                 <Alert severity="success" sx={{ mb: 3 }}>
-                  A technician has been assigned and the schedule is set. You can update it below if needed.
+                  A technician has been assigned. You can reassign below if needed.
                 </Alert>
               )}
 
@@ -442,8 +452,8 @@ function WorkOrderWizard() {
                   <TextField
                     fullWidth
                     size="medium"
-                    type="datetime-local"
-                    label="Start Date & Time"
+                    type="date"
+                    label="Start Date"
                     value={assignForm.startDate}
                     onChange={handleAssignChange('startDate')}
                     onBlur={handleAssignBlur('startDate')}
@@ -457,14 +467,14 @@ function WorkOrderWizard() {
                   <TextField
                     fullWidth
                     size="medium"
-                    type="datetime-local"
-                    label="End Date & Time"
+                    type="date"
+                    label="End Date"
                     value={assignForm.endDate}
                     onChange={handleAssignChange('endDate')}
                     onBlur={handleAssignBlur('endDate')}
                     error={assignFieldError('endDate')}
                     helperText={assignFieldHelper('endDate')}
-                    slotProps={{ inputLabel: { shrink: true } }}
+                    slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: assignForm.startDate || undefined } }}
                   />
                 </Grid>
               </Grid>
@@ -501,17 +511,17 @@ function WorkOrderWizard() {
                 <>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                     <Typography variant="body2">Current status:</Typography>
-                    <Chip size="small" label={workOrder.status} color={STATUS_COLORS[workOrder.status]} />
+                    <Chip size="small" label={STATUS_LABELS[workOrder.status] || workOrder.status} color={STATUS_COLORS[workOrder.status]} />
                   </Box>
 
                   <Grid container spacing={3} sx={{ mb: 2 }}>
-                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                    <Grid size={{ xs: 12, sm: 6, md: 4 }}>
                       <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                         Title
                       </Typography>
                       <Typography variant="body1">{workOrder.title}</Typography>
                     </Grid>
-                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                    <Grid size={{ xs: 12, sm: 6, md: 4 }}>
                       <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                         Facility / Asset
                       </Typography>
@@ -519,21 +529,11 @@ function WorkOrderWizard() {
                         {workOrder.facility?.name} &middot; {workOrder.asset?.name}
                       </Typography>
                     </Grid>
-                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                    <Grid size={{ xs: 12, sm: 6, md: 4 }}>
                       <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                         Assigned Technician
                       </Typography>
                       <Typography variant="body1">{workOrder.technician?.name || 'Unassigned'}</Typography>
-                    </Grid>
-                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                        Scheduled Window
-                      </Typography>
-                      <Typography variant="body1">
-                        {workOrder.scheduledStart ? new Date(workOrder.scheduledStart).toLocaleString() : '—'}
-                        {' — '}
-                        {workOrder.scheduledEnd ? new Date(workOrder.scheduledEnd).toLocaleString() : '—'}
-                      </Typography>
                     </Grid>
                   </Grid>
 
@@ -596,9 +596,9 @@ function WorkOrderWizard() {
                     <Box key={h.id}>
                       <Box sx={{ py: 1.5 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                          <Chip size="small" label={h.oldStatus} color={STATUS_COLORS[h.oldStatus]} />
+                          <Chip size="small" label={STATUS_LABELS[h.oldStatus] || h.oldStatus} color={STATUS_COLORS[h.oldStatus]} />
                           <ArrowRightAltIcon fontSize="small" color="action" />
-                          <Chip size="small" label={h.newStatus} color={STATUS_COLORS[h.newStatus]} />
+                          <Chip size="small" label={STATUS_LABELS[h.newStatus] || h.newStatus} color={STATUS_COLORS[h.newStatus]} />
                         </Box>
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                           {new Date(h.changedAt).toLocaleString()} &middot; Changed by {h.changedBy}

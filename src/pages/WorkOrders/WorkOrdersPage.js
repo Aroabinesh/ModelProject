@@ -34,6 +34,7 @@ import InboxIcon from '@mui/icons-material/Inbox';
 
 import {
   STATUS_OPTIONS,
+  STATUS_LABELS,
   PRIORITY_OPTIONS,
   STATUS_COLORS,
   PRIORITY_COLORS,
@@ -269,7 +270,7 @@ function WorkOrdersPage() {
               <MenuItem value="">All Statuses</MenuItem>
               {STATUS_OPTIONS.map((s) => (
                 <MenuItem key={s} value={s}>
-                  {s}
+                  {STATUS_LABELS[s]}
                 </MenuItem>
               ))}
             </TextField>
@@ -404,7 +405,7 @@ function WorkOrdersPage() {
                       <Chip size="small" label={row.priority} color={PRIORITY_COLORS[row.priority]} variant="outlined" />
                     </TableCell>
                     <TableCell>
-                      <Chip size="small" label={row.status} color={STATUS_COLORS[row.status]} />
+                      <Chip size="small" label={STATUS_LABELS[row.status] || row.status} color={STATUS_COLORS[row.status]} />
                     </TableCell>
                     <TableCell>{row.technician?.name || 'Unassigned'}</TableCell>
                     <TableCell>{new Date(row.createdAt).toLocaleDateString()}</TableCell>
