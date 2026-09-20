@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Box,
@@ -11,6 +11,7 @@ import {
   Button,
   Grid,
   Alert,
+  Autocomplete,
   CircularProgress,
   Chip,
   Divider,
@@ -64,8 +65,13 @@ function WorkOrderWizard() {
   const [loadingInitial, setLoadingInitial] = useState(isEditMode);
   const [loadError, setLoadError] = useState('');
 
+  const ASSET_PAGE_SIZE = 5;
+
   const [facilities, setFacilities] = useState([]);
   const [assets, setAssets] = useState([]);
+  const [assetsPage, setAssetsPage] = useState(1);
+  const [assetsTotalPages, setAssetsTotalPages] = useState(1);
+  const [assetsLoadingMore, setAssetsLoadingMore] = useState(false);
   const [technicians, setTechnicians] = useState([]);
 
   const [detailsForm, setDetailsForm] = useState(EMPTY_DETAILS);
@@ -120,10 +126,32 @@ function WorkOrderWizard() {
   useEffect(() => {
     if (!detailsForm.facilityId) {
       setAssets([]);
+      setAssetsPage(1);
+      setAssetsTotalPages(1);
       return;
     }
-    listAssetsByFacility(detailsForm.facilityId).then(setAssets);
+    listAssetsByFacility(detailsForm.facilityId, { page: 1, pageSize: ASSET_PAGE_SIZE }).then((result) => {
+      setAssets(result.items);
+      setAssetsPage(result.page);
+      setAssetsTotalPages(result.totalPages);
+    });
   }, [detailsForm.facilityId]);
+
+  const handleLoadMoreAssets = useCallback(async () => {
+    setAssetsLoadingMore(true);
+    try {
+      const nextPage = assetsPage + 1;
+      const result = await listAssetsByFacility(detailsForm.facilityId, {
+        page: nextPage,
+        pageSize: ASSET_PAGE_SIZE,
+      });
+      setAssets((prev) => [...prev, ...result.items]);
+      setAssetsPage(result.page);
+      setAssetsTotalPages(result.totalPages);
+    } finally {
+      setAssetsLoadingMore(false);
+    }
+  }, [assetsPage, detailsForm.facilityId]);
 
   useEffect(() => {
     if (activeTab !== 3 || !workOrder) return;
@@ -137,6 +165,36 @@ function WorkOrderWizard() {
 
   const detailsErrors = useMemo(() => validateWorkOrderDetails(detailsForm), [detailsForm]);
   const assignErrors = useMemo(() => validateAssignment(assignForm), [assignForm]);
+
+  // Ensures the already-assigned asset still renders correctly even if it isn't
+  // on the currently loaded page(s) of the paginated asset list.
+  const assetOptions = useMemo(() => {
+    if (workOrder?.asset?.id != null && !assets.some((a) => a.id === workOrder.asset.id)) {
+      return [{ id: workOrder.asset.id, name: workOrder.asset.name, assetCode: workOrder.asset.assetCode }, ...assets];
+    }
+    return assets;
+  }, [assets, workOrder]);
+
+  const AssetListPaper = useCallback(
+    ({ children, ...paperProps }) => (
+      <Paper {...paperProps}>
+        {children}
+        {assetsPage < assetsTotalPages && (
+          <Button
+            fullWidth
+            size="small"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={handleLoadMoreAssets}
+            disabled={assetsLoadingMore}
+            sx={{ justifyContent: 'flex-start', px: 2, py: 1 }}
+          >
+            {assetsLoadingMore ? <CircularProgress size={16} /> : 'Load 5 more asset codes'}
+          </Button>
+        )}
+      </Paper>
+    ),
+    [assetsPage, assetsTotalPages, assetsLoadingMore, handleLoadMoreAssets]
+  );
 
   const step1Done = Boolean(workOrder);
   const step2Done = Boolean(workOrder?.assignedTechnicianId);
@@ -291,51 +349,58 @@ function WorkOrderWizard() {
 
               <Grid container spacing={3}>
                 <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-                  <TextField
-                    select
+                  <Autocomplete
                     fullWidth
-                    size="medium"
-                    label="Facility Name"
-                    value={detailsForm.facilityId}
-                    onChange={handleDetailsChange('facilityId')}
+                    options={facilities}
+                    getOptionLabel={(f) => f.name || ''}
+                    isOptionEqualToValue={(f, v) => f.id === v.id}
+                    value={facilities.find((f) => f.id === detailsForm.facilityId) || null}
+                    onChange={(e, newValue) =>
+                      handleDetailsChange('facilityId')({ target: { value: newValue?.id || '' } })
+                    }
                     onBlur={handleDetailsBlur('facilityId')}
-                    error={detailsFieldError('facilityId')}
-                    helperText={isEditMode ? 'Facility cannot be changed after creation.' : detailsFieldHelper('facilityId')}
                     disabled={isEditMode}
-                  >
-                    {facilities.map((f) => (
-                      <MenuItem key={f.id} value={f.id}>
-                        {f.name}
-                      </MenuItem>
-                    ))}
-                  </TextField>
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        size="medium"
+                        label="Facility Name"
+                        error={detailsFieldError('facilityId')}
+                        helperText={isEditMode ? 'Facility cannot be changed after creation.' : detailsFieldHelper('facilityId')}
+                      />
+                    )}
+                  />
                 </Grid>
 
                 <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-                  <TextField
-                    select
+                  <Autocomplete
                     fullWidth
-                    size="medium"
-                    label="AssetCode"
-                    value={detailsForm.assetId}
-                    onChange={handleDetailsChange('assetId')}
-                    onBlur={handleDetailsBlur('assetId')}
-                    error={detailsFieldError('assetId')}
-                    helperText={
-                      isEditMode
-                        ? 'Asset cannot be changed after creation.'
-                        : !detailsForm.facilityId
-                        ? 'Select a facility first.'
-                        : detailsFieldHelper('assetId')
+                    options={assetOptions}
+                    getOptionLabel={(a) => (a ? `${a.name} (${a.assetCode})` : '')}
+                    isOptionEqualToValue={(a, v) => a.id === v.id}
+                    value={assetOptions.find((a) => a.id === detailsForm.assetId) || null}
+                    onChange={(e, newValue) =>
+                      handleDetailsChange('assetId')({ target: { value: newValue?.id || '' } })
                     }
+                    onBlur={handleDetailsBlur('assetId')}
                     disabled={isEditMode || !detailsForm.facilityId}
-                  >
-                    {assets.map((a) => (
-                      <MenuItem key={a.id} value={a.id}>
-                        {a.name} ({a.assetCode})
-                      </MenuItem>
-                    ))}
-                  </TextField>
+                    slots={{ paper: AssetListPaper }}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        size="medium"
+                        label="AssetCode"
+                        error={detailsFieldError('assetId')}
+                        helperText={
+                          isEditMode
+                            ? 'Asset cannot be changed after creation.'
+                            : !detailsForm.facilityId
+                            ? 'Select a facility first.'
+                            : detailsFieldHelper('assetId')
+                        }
+                      />
+                    )}
+                  />
                 </Grid>
 
                 <Grid size={{ xs: 12, sm: 12, md: 4 }}>
@@ -429,23 +494,26 @@ function WorkOrderWizard() {
 
               <Grid container spacing={3}>
                 <Grid size={{ xs: 12, md: 4 }}>
-                  <TextField
-                    select
+                  <Autocomplete
                     fullWidth
-                    size="medium"
-                    label="Technician"
-                    value={assignForm.technicianId}
-                    onChange={handleAssignChange('technicianId')}
+                    options={technicians}
+                    getOptionLabel={(t) => t.name || ''}
+                    isOptionEqualToValue={(t, v) => t.id === v.id}
+                    value={technicians.find((t) => t.id === assignForm.technicianId) || null}
+                    onChange={(e, newValue) =>
+                      handleAssignChange('technicianId')({ target: { value: newValue?.id || '' } })
+                    }
                     onBlur={handleAssignBlur('technicianId')}
-                    error={assignFieldError('technicianId')}
-                    helperText={assignFieldHelper('technicianId')}
-                  >
-                    {technicians.map((t) => (
-                      <MenuItem key={t.id} value={t.id}>
-                        {t.name}
-                      </MenuItem>
-                    ))}
-                  </TextField>
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        size="medium"
+                        label="Technician"
+                        error={assignFieldError('technicianId')}
+                        helperText={assignFieldHelper('technicianId')}
+                      />
+                    )}
+                  />
                 </Grid>
 
                 <Grid size={{ xs: 12, sm: 6, md: 4 }}>

@@ -204,9 +204,20 @@ export async function listFacilities() {
   }));
 }
 
-export async function listAssetsByFacility(facilityId) {
-  const items = await request('/api/assets', { query: { facilityId } });
-  return items || [];
+export async function listAssetsByFacility(facilityId, { page = 1, pageSize = 5 } = {}) {
+  const result = await request('/api/assets', {
+    query: { FacilityId: facilityId, Page: page, PageSize: pageSize },
+  });
+
+  if (Array.isArray(result)) {
+    return { items: result, page: 1, totalPages: 1, totalCount: result.length };
+  }
+  return {
+    items: result?.items || [],
+    page: result?.page || page,
+    totalPages: result?.totalPages || 1,
+    totalCount: result?.totalCount || 0,
+  };
 }
 
 export async function listTechnicians() {
@@ -214,18 +225,22 @@ export async function listTechnicians() {
   return items || [];
 }
 
-// There's no dedicated stats endpoint, so this pulls a large page of work
-// orders and aggregates client-side.
+// There's no dedicated stats endpoint. Rather than pulling a page of work
+// orders and aggregating client-side (which undercounts once there are more
+// work orders than fit on that page), this asks the API for just the counts:
+// PageSize: 1 on the (already paginated) list endpoint still returns an
+// accurate totalCount, and active technicians come straight from the
+// technician roster instead of being inferred from a work order sample.
 export async function getWorkOrderStats() {
-  const result = await request('/api/workorders', { query: { Page: 1, PageSize: 1000 } });
-  const items = result.items || [];
+  const [totalResult, completedResult, activeTechnicians] = await Promise.all([
+    request('/api/workorders', { query: { Page: 1, PageSize: 1 } }),
+    request('/api/workorders', { query: { Page: 1, PageSize: 1, Status: STATUS.COMPLETED } }),
+    listTechnicians(),
+  ]);
 
-  const total = result.totalCount;
-  const pending = items.filter((w) => w.status !== STATUS.COMPLETED).length;
-  const completed = items.filter((w) => w.status === STATUS.COMPLETED).length;
-  const activeTechnicians = new Set(
-    items.filter((w) => w.assignedTechnicianId).map((w) => w.assignedTechnicianId)
-  ).size;
+  const total = totalResult.totalCount || 0;
+  const completed = completedResult.totalCount || 0;
+  const pending = total - completed;
 
-  return { total, pending, completed, activeTechnicians };
+  return { total, pending, completed, activeTechnicians: activeTechnicians.length };
 }

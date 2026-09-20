@@ -25,6 +25,7 @@ import {
   Alert,
   Snackbar,
   Grid,
+  Autocomplete,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import AddIcon from '@mui/icons-material/Add';
@@ -298,24 +299,19 @@ function WorkOrdersPage() {
           </Grid>
 
           <Grid size={{ xs: 12, sm: 6, md: 2.5 }}>
-            <TextField
-              select
+            <Autocomplete
               fullWidth
               size="small"
-              label="Facility"
-              value={facilityFilter}
-              onChange={(e) => {
-                setFacilityFilter(e.target.value);
+              options={facilities}
+              getOptionLabel={(f) => f.name || ''}
+              isOptionEqualToValue={(f, v) => f.id === v.id}
+              value={facilities.find((f) => f.id === facilityFilter) || null}
+              onChange={(e, newValue) => {
+                setFacilityFilter(newValue?.id || '');
                 setPage(0);
               }}
-            >
-              <MenuItem value="">All Facilities</MenuItem>
-              {facilities.map((f) => (
-                <MenuItem key={f.id} value={f.id}>
-                  {f.name}
-                </MenuItem>
-              ))}
-            </TextField>
+              renderInput={(params) => <TextField {...params} label="Facility" placeholder="All Facilities" />}
+            />
           </Grid>
 
           <Grid size={{ xs: 12, sm: 12, md: 1.5 }}>
