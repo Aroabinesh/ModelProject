@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Typography,
   Box,
@@ -9,6 +9,9 @@ import {
   CardContent,
   Avatar,
   Button,
+  Alert,
+  Skeleton,
+  Snackbar,
 } from '@mui/material';
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import PendingActionsIcon from '@mui/icons-material/PendingActions';
@@ -20,11 +23,28 @@ import { getWorkOrderStats } from '../api/workOrdersApi';
 
 function Dashboard() {
   const navigate = useNavigate();
+  const location = useLocation();
   const username = localStorage.getItem('username') || 'User';
   const [stats, setStats] = useState({ total: 0, pending: 0, completed: 0, activeTechnicians: 0 });
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [statsError, setStatsError] = useState('');
+  const [snackbar, setSnackbar] = useState({ open: false, message: '' });
 
   useEffect(() => {
-    getWorkOrderStats().then(setStats);
+    setStatsLoading(true);
+    setStatsError('');
+    getWorkOrderStats()
+      .then(setStats)
+      .catch((err) => setStatsError(err.message || 'Failed to load work order stats.'))
+      .finally(() => setStatsLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (location.state?.message) {
+      setSnackbar({ open: true, message: location.state.message });
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const statCards = [
@@ -79,6 +99,12 @@ function Dashboard() {
       </Box>
 
       <Container maxWidth="lg" sx={{ py: 4 }}>
+        {statsError && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {statsError}
+          </Alert>
+        )}
+
         <Grid container spacing={3}>
           {statCards.map((stat) => (
             <Grid size={{ xs: 12, sm: 6, md: 3 }} key={stat.label}>
@@ -86,9 +112,13 @@ function Dashboard() {
                 <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                   <Avatar sx={{ bgcolor: stat.color, width: 48, height: 48 }}>{stat.icon}</Avatar>
                   <Box>
-                    <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                      {stat.value}
-                    </Typography>
+                    {statsLoading ? (
+                      <Skeleton variant="text" width={48} height={32} />
+                    ) : (
+                      <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                        {statsError ? '—' : stat.value}
+                      </Typography>
+                    )}
                     <Typography variant="body2" color="text.secondary">
                       {stat.label}
                     </Typography>
@@ -129,6 +159,17 @@ function Dashboard() {
           </CardContent>
         </Card>
       </Container>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="success" onClose={() => setSnackbar((s) => ({ ...s, open: false }))} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

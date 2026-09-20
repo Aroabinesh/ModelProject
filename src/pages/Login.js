@@ -44,7 +44,9 @@ function Login() {
       localStorage.setItem('isAuthenticated', 'true');
       localStorage.setItem('authToken', result.token);
       localStorage.setItem('username', result.username);
-      navigate('/dashboard');
+      navigate('/dashboard', {
+        state: { message: `${result.username} logged in successfully!` },
+      });
     } catch (err) {
       setError(err.status === 401 ? 'Invalid username or password.' : err.message || 'Failed to sign in.');
     } finally {

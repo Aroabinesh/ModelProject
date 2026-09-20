@@ -68,11 +68,15 @@ function WorkOrderWizard() {
   const ASSET_PAGE_SIZE = 5;
 
   const [facilities, setFacilities] = useState([]);
+  const [facilitiesError, setFacilitiesError] = useState('');
   const [assets, setAssets] = useState([]);
   const [assetsPage, setAssetsPage] = useState(1);
   const [assetsTotalPages, setAssetsTotalPages] = useState(1);
+  const [assetsLoading, setAssetsLoading] = useState(false);
   const [assetsLoadingMore, setAssetsLoadingMore] = useState(false);
+  const [assetsError, setAssetsError] = useState('');
   const [technicians, setTechnicians] = useState([]);
+  const [techniciansError, setTechniciansError] = useState('');
 
   const [detailsForm, setDetailsForm] = useState(EMPTY_DETAILS);
   const [detailsTouched, setDetailsTouched] = useState({});
@@ -95,8 +99,12 @@ function WorkOrderWizard() {
   const [snackbar, setSnackbar] = useState({ open: false, message: '' });
 
   useEffect(() => {
-    listFacilities().then(setFacilities);
-    listTechnicians().then(setTechnicians);
+    listFacilities()
+      .then(setFacilities)
+      .catch((err) => setFacilitiesError(err.message || 'Failed to load facilities.'));
+    listTechnicians()
+      .then(setTechnicians)
+      .catch((err) => setTechniciansError(err.message || 'Failed to load technicians.'));
   }, []);
 
   useEffect(() => {
@@ -128,17 +136,27 @@ function WorkOrderWizard() {
       setAssets([]);
       setAssetsPage(1);
       setAssetsTotalPages(1);
+      setAssetsError('');
       return;
     }
-    listAssetsByFacility(detailsForm.facilityId, { page: 1, pageSize: ASSET_PAGE_SIZE }).then((result) => {
-      setAssets(result.items);
-      setAssetsPage(result.page);
-      setAssetsTotalPages(result.totalPages);
-    });
+    setAssetsLoading(true);
+    setAssetsError('');
+    listAssetsByFacility(detailsForm.facilityId, { page: 1, pageSize: ASSET_PAGE_SIZE })
+      .then((result) => {
+        setAssets(result.items);
+        setAssetsPage(result.page);
+        setAssetsTotalPages(result.totalPages);
+      })
+      .catch((err) => {
+        setAssets([]);
+        setAssetsError(err.message || 'Failed to load asset codes for this facility.');
+      })
+      .finally(() => setAssetsLoading(false));
   }, [detailsForm.facilityId]);
 
   const handleLoadMoreAssets = useCallback(async () => {
     setAssetsLoadingMore(true);
+    setAssetsError('');
     try {
       const nextPage = assetsPage + 1;
       const result = await listAssetsByFacility(detailsForm.facilityId, {
@@ -148,6 +166,8 @@ function WorkOrderWizard() {
       setAssets((prev) => [...prev, ...result.items]);
       setAssetsPage(result.page);
       setAssetsTotalPages(result.totalPages);
+    } catch (err) {
+      setAssetsError(err.message || 'Failed to load more asset codes.');
     } finally {
       setAssetsLoadingMore(false);
     }
@@ -347,6 +367,12 @@ function WorkOrderWizard() {
                 </Alert>
               )}
 
+              {facilitiesError && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  {facilitiesError}
+                </Alert>
+              )}
+
               <Grid container spacing={3}>
                 <Grid size={{ xs: 12, sm: 6, md: 4 }}>
                   <Autocomplete
@@ -375,6 +401,7 @@ function WorkOrderWizard() {
                 <Grid size={{ xs: 12, sm: 6, md: 4 }}>
                   <Autocomplete
                     fullWidth
+                    loading={assetsLoading}
                     options={assetOptions}
                     getOptionLabel={(a) => (a ? `${a.name} (${a.assetCode})` : '')}
                     isOptionEqualToValue={(a, v) => a.id === v.id}
@@ -390,14 +417,27 @@ function WorkOrderWizard() {
                         {...params}
                         size="medium"
                         label="AssetCode"
-                        error={detailsFieldError('assetId')}
+                        error={Boolean(assetsError) || detailsFieldError('assetId')}
                         helperText={
-                          isEditMode
+                          assetsError ||
+                          (isEditMode
                             ? 'Asset cannot be changed after creation.'
                             : !detailsForm.facilityId
                             ? 'Select a facility first.'
-                            : detailsFieldHelper('assetId')
+                            : detailsFieldHelper('assetId'))
                         }
+                        slotProps={{
+                          ...params.slotProps,
+                          input: {
+                            ...params.slotProps?.input,
+                            endAdornment: (
+                              <>
+                                {assetsLoading ? <CircularProgress color="inherit" size={16} /> : null}
+                                {params.slotProps?.input?.endAdornment}
+                              </>
+                            ),
+                          },
+                        }}
                       />
                     )}
                   />
@@ -483,6 +523,12 @@ function WorkOrderWizard() {
               {assignError && (
                 <Alert severity="error" sx={{ mb: 2 }}>
                   {assignError}
+                </Alert>
+              )}
+
+              {techniciansError && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  {techniciansError}
                 </Alert>
               )}
 

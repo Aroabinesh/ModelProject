@@ -95,7 +95,10 @@ function WorkOrdersPage() {
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
   useEffect(() => {
-    listFacilities().then(setFacilities);
+    listFacilities()
+      .then(setFacilities)
+      .catch((err) => showSnackbar(err.message || 'Failed to load facilities.', 'error'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
